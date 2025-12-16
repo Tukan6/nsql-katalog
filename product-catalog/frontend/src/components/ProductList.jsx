@@ -1,55 +1,171 @@
-import React, { useEffect, useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { api } from '../api'
 
-export default function ProductList({ onEdit, reload, onReload }) {
-  const [items, setItems] = useState([])
-  const [page, setPage] = useState(1)
-  const [search, setSearch] = useState('')
-  const [total, setTotal] = useState(0)
+export default function ProductList({ onEdit, refreshTrigger }) {
+  const [products, setProducts] = useState([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalProducts, setTotalProducts] = useState(0)
+  const [isLoading, setIsLoading] = useState(false)
+  
+  const itemsPerPage = 8
 
-  async function load() {
-    const res = await api.get(`/products?search=${encodeURIComponent(search)}&page=${page}&limit=8`)
-    setItems(res.data.items)
-    setTotal(res.data.total)
+  useEffect(() => {
+    loadProducts()
+  }, [currentPage, refreshTrigger])
+
+  const loadProducts = async () => {
+    setIsLoading(true)
+    try {
+      const response = await api.get('/products', {
+        params: {
+          search: searchQuery,
+          page: currentPage,
+          limit: itemsPerPage
+        }
+      })
+      setProducts(response.data.items)
+      setTotalProducts(response.data.total)
+    } catch (err) {
+      console.error('Error loading products:', err)
+      alert('Failed to load products')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  useEffect(() => { load() }, [page, search, reload])
-
-  async function del(id) {
-    if (!confirm('Delete product?')) return
-    await api.delete(`/products/${id}`)
-    onReload()
+  const handleSearch = () => {
+    setCurrentPage(1)
+    loadProducts()
   }
 
-  async function showDetail(id) {
-    const res = await api.get(`/products/${id}`)
-    alert(`Cache: ${res.data.cache}\nName: ${res.data.product.name}`)
+  const handleSearchKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      handleSearch()
+    }
   }
+
+  const handleDelete = async (id, name) => {
+    if (!window.confirm(`Are you sure you want to delete "${name}"?`)) {
+      return
+    }
+
+    try {
+      await api.delete(`/products/${id}`)
+      loadProducts()
+    } catch (err) {
+      console.error('Error deleting product:', err)
+      alert('Failed to delete product')
+    }
+  }
+
+  const handleViewDetail = async (id) => {
+    try {
+      const response = await api.get(`/products/${id}`)
+      const { cache, product } = response.data
+      alert(
+        `Cache Status: ${cache}\n\n` +
+        `Name: ${product.name}\n` +
+        `Category: ${product.category || 'N/A'}\n` +
+        `Price: $${product.price}\n` +
+        `Description: ${product.description || 'N/A'}`
+      )
+    } catch (err) {
+      console.error('Error fetching product details:', err)
+      alert('Failed to fetch product details')
+    }
+  }
+
+  const totalPages = Math.ceil(totalProducts / itemsPerPage)
 
   return (
-    <div>
-      <div style={{marginBottom:10}}>
-        <input placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)} />
-        <button className="btn" onClick={()=>{ setPage(1); load(); }}>Search</button>
+    <div className="product-list">
+      <div className="search-bar">
+        <input
+          type="text"
+          placeholder="Search products..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyPress={handleSearchKeyPress}
+          className="search-input"
+        />
+        <button onClick={handleSearch} className="btn btn-primary">
+          Search
+        </button>
       </div>
 
-      {items.map(p => (
-        <div key={p.id} className="card" style={{marginBottom:8}}>
-          <strong>{p.name}</strong>
-          <div className="small">{p.category} • ${p.price}</div>
-          <div style={{marginTop:8}}>
-            <button className="btn" onClick={()=>onEdit(p)}>Edit</button>
-            <button className="btn" onClick={()=>del(p.id)}>Delete</button>
-            <button className="btn" onClick={()=>showDetail(p.id)}>Detail (shows cache)</button>
-          </div>
+      {isLoading ? (
+        <div className="loading">Loading products...</div>
+      ) : products.length === 0 ? (
+        <div className="no-products">No products found</div>
+      ) : (
+        <div className="products-grid">
+          {products.map((product) => (
+            <div key={product.id} className="product-card">
+              <div className="product-header">
+                <h3 className="product-name">{product.name}</h3>
+                <div className="product-price">${product.price}</div>
+              </div>
+              
+              <div className="product-info">
+                {product.category && (
+                  <span className="product-category">{product.category}</span>
+                )}
+              </div>
+              
+              {product.description && (
+                <p className="product-description">{product.description}</p>
+              )}
+              
+              <div className="product-actions">
+                <button
+                  onClick={() => onEdit(product)}
+                  className="btn btn-primary"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => handleDelete(product.id, product.name)}
+                  className="btn btn-danger"
+                >
+                  Delete
+                </button>
+                <button
+                  onClick={() => handleViewDetail(product.id)}
+                  className="btn btn-secondary"
+                >
+                  Details
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
 
-      <div style={{marginTop:10}}>
-        <button className="btn" onClick={()=>setPage(p=>Math.max(1,p-1))}>Prev</button>
-        <span style={{margin:'0 8px'}}>Page {page}</span>
-        <button className="btn" onClick={()=>setPage(p=>p+1)}>Next</button>
-        <div className="small">Total: {total}</div>
+      <div className="pagination">
+        <button
+          onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+          disabled={currentPage === 1 || isLoading}
+          className="btn btn-secondary"
+        >
+          Previous
+        </button>
+        
+        <span className="page-info">
+          Page {currentPage} of {totalPages || 1}
+        </span>
+        
+        <button
+          onClick={() => setCurrentPage(prev => prev + 1)}
+          disabled={currentPage >= totalPages || isLoading}
+          className="btn btn-secondary"
+        >
+          Next
+        </button>
+        
+        <div className="total-count">
+          Total products: {totalProducts}
+        </div>
       </div>
     </div>
   )

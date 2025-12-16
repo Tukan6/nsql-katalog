@@ -1,42 +1,158 @@
-import React, { useEffect, useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { api } from '../api'
 
-export default function ProductForm({ product, onDone }) {
-  const [form, setForm] = useState({ name:'', description:'', price:0, category:'' })
+export default function ProductForm({ product, onSuccess }) {
+  const initialFormState = {
+    name: '',
+    description: '',
+    price: '',
+    category: ''
+  }
 
-  useEffect(() => { if (product) setForm(product); else setForm({ name:'', description:'', price:0, category:'' }) }, [product])
+  const [formData, setFormData] = useState(initialFormState)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState('')
 
-  async function submit(e) {
-    e.preventDefault()
+  useEffect(() => {
     if (product) {
-      await api.put(`/products/${product.id}`, form)
+      setFormData({
+        name: product.name || '',
+        description: product.description || '',
+        price: product.price?.toString() || '',
+        category: product.category || ''
+      })
     } else {
-      await api.post('/products', form)
+      setFormData(initialFormState)
     }
-    onDone()
+    setError('')
+  }, [product])
+
+  const handleChange = (e) => {
+    const { name, value } = e.target
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }))
+    setError('')
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+
+    if (!formData.name.trim()) {
+      setError('Product name is required')
+      return
+    }
+
+    const price = parseFloat(formData.price)
+    if (isNaN(price) || price < 0) {
+      setError('Please enter a valid price')
+      return
+    }
+
+    setIsSubmitting(true)
+
+    try {
+      const payload = {
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+        price: price,
+        category: formData.category.trim()
+      }
+
+      if (product && product.id) {
+        await api.put(`/products/${product.id}`, payload)
+      } else {
+        await api.post('/products', payload)
+      }
+
+      setFormData(initialFormState)
+      onSuccess()
+    } catch (err) {
+      const errorMessage = err?.response?.data?.error || err.message || 'Failed to save product'
+      setError(errorMessage)
+      console.error('Error saving product:', err)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleCancel = () => {
+    setFormData(initialFormState)
+    setError('')
+    onSuccess()
   }
 
   return (
-    <form onSubmit={submit}>
-      <div>
-        <label>Name</label><br/>
-        <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} required />
+    <form onSubmit={handleSubmit} className="product-form">
+      {error && (
+        <div className="error-message">{error}</div>
+      )}
+
+      <div className="form-group">
+        <label htmlFor="name">Product Name *</label>
+        <input
+          type="text"
+          id="name"
+          name="name"
+          value={formData.name}
+          onChange={handleChange}
+          placeholder="Enter product name"
+          disabled={isSubmitting}
+          required
+        />
       </div>
-      <div>
-        <label>Category</label><br/>
-        <input value={form.category} onChange={e=>setForm({...form,category:e.target.value})} />
+
+      <div className="form-group">
+        <label htmlFor="category">Category</label>
+        <input
+          type="text"
+          id="category"
+          name="category"
+          value={formData.category}
+          onChange={handleChange}
+          placeholder="Enter category"
+          disabled={isSubmitting}
+        />
       </div>
-      <div>
-        <label>Price</label><br/>
-        <input type="number" step="0.01" value={form.price} onChange={e=>setForm({...form,price:parseFloat(e.target.value) || 0})} required />
+
+      <div className="form-group">
+        <label htmlFor="price">Price *</label>
+        <input
+          type="number"
+          id="price"
+          name="price"
+          value={formData.price}
+          onChange={handleChange}
+          placeholder="0.00"
+          step="0.01"
+          min="0"
+          disabled={isSubmitting}
+          required
+        />
       </div>
-      <div>
-        <label>Description</label><br/>
-        <textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})} />
+
+      <div className="form-group">
+        <label htmlFor="description">Description</label>
+        <textarea
+          id="description"
+          name="description"
+          value={formData.description}
+          onChange={handleChange}
+          placeholder="Enter product description"
+          rows="4"
+          disabled={isSubmitting}
+        />
       </div>
-      <div style={{marginTop:8}}>
-        <button className="btn" type="submit">Save</button>
-        <button type="button" className="btn" onClick={()=>{ onDone(); }}>Cancel</button>
+
+      <div className="form-actions">
+        <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+          {isSubmitting ? 'Saving...' : product ? 'Update Product' : 'Create Product'}
+        </button>
+        <button type="button" className="btn btn-secondary" onClick={handleCancel} disabled={isSubmitting}>
+          Cancel
+        </button>
       </div>
     </form>
   )

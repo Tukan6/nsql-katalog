@@ -1,11 +1,19 @@
-const { Pool } = require('pg');
+const { createClient } = require('redis');
 
-const pool = new Pool({
-  host: process.env.PGHOST || 'db',
-  user: process.env.PGUSER || 'postgres',
-  password: process.env.PGPASSWORD || 'postgres',
-  database: process.env.PGDATABASE || 'product_catalog',
-  port: process.env.PGPORT || 5432,
-});
+const redisUrl = process.env.REDIS_URL || 'redis://redis:6379';
+const client = createClient({ url: redisUrl });
 
-module.exports = pool;
+client.on('error', (err) => console.error('Redis Client Error', err));
+
+let isConnected = false;
+
+async function connect() {
+  if (!isConnected) {
+    await client.connect();
+    isConnected = true;
+    console.log('Connected to Redis');
+  }
+  return client;
+}
+
+module.exports = { client, connect };
